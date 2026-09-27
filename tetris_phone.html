@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Phone Tetris</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;height:100%;overflow:hidden;background:#0b1020;color:#fff;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
+body{display:flex;justify-content:center;align-items:center}
+#app{width:min(100vw,520px);height:100dvh;display:flex;flex-direction:column;padding:10px;gap:8px}
+header{display:flex;justify-content:space-between;align-items:center;padding:2px 4px}
+h1{font-size:25px;margin:0;letter-spacing:1px}.stats{display:flex;gap:12px;font-size:13px;text-align:center}.stats b{display:block;font-size:18px}
+#wrap{flex:1;min-height:0;display:flex;justify-content:center;align-items:center}
+#board{display:block;background:#11182b;border:3px solid #2c3859;border-radius:8px;max-height:100%;width:auto;aspect-ratio:10/20;image-rendering:pixelated;box-shadow:0 10px 35px #0006}
+#controls{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding-bottom:env(safe-area-inset-bottom)}
+button{border:0;border-radius:12px;background:#202a46;color:#fff;font-size:25px;font-weight:700;min-height:55px;touch-action:manipulation;box-shadow:inset 0 1px #ffffff15}
+button:active{transform:scale(.95);background:#314064}.wide{grid-column:span 2}
+#overlay{position:fixed;inset:0;background:#0009;display:none;align-items:center;justify-content:center;padding:25px}
+.card{background:#151e35;border:1px solid #3b496c;border-radius:18px;padding:25px;text-align:center;width:min(90vw,340px);box-shadow:0 15px 50px #000}
+.card h2{margin-top:0;font-size:28px}.card button{width:100%;margin-top:10px}
+.small{opacity:.7;font-size:12px;margin-top:4px}
+</style>
+</head>
+<body>
+<div id="app">
+<header><h1>TETRIS</h1><div class="stats"><span>SCORE<b id="score">0</b></span><span>LINES<b id="lines">0</b></span><span>LEVEL<b id="level">1</b></span></div></header>
+<div id="wrap"><canvas id="board" width="300" height="600"></canvas></div>
+<div id="controls">
+<button data-act="left">←</button><button data-act="rotate">↻</button><button data-act="right">→</button><button data-act="drop">↓</button>
+<button class="wide" data-act="hard">DROP</button><button class="wide" data-act="pause">Ⅱ</button>
+</div>
+</div>
+<div id="overlay"><div class="card"><h2 id="overTitle">Paused</h2><p id="overText">Tap continue to resume.</p><button id="mainBtn">Continue</button><div class="small">Keyboard also works: arrows, Z/X, Space, P</div></div></div>
+
+<script>
+const canvas=document.getElementById('board'),ctx=canvas.getContext('2d');
+const W=10,H=20,S=30;
+const colors=['#000','#38bdf8','#facc15','#a78bfa','#4ade80','#f87171','#60a5fa','#fb923c'];
+const shapes=[
+[[1,1,1,1]], [[1,1],[1,1]], [[0,1,0],[1,1,1]], [[1,0,0],[1,1,1]],
+[[0,0,1],[1,1,1]], [[1,1,0],[0,1,1]], [[0,1,1],[1,1,0]]
+];
+let board,piece,next,score=0,lines=0,level=1,dropTimer=0,last=0,paused=false,over=false;
+
+function newBoard(){return Array.from({length:H},()=>Array(W).fill(0))}
+function randPiece(){
+  const n=Math.floor(Math.random()*shapes.length);
+  const m=shapes[n].map(r=>r.slice());
+  return {m,c:n+1,x:Math.floor((W-m[0].length)/2),y:0};
+}
+function reset(){
+ board=newBoard();score=lines=0;level=1;piece=randPiece();next=randPiece();
+ paused=over=false;overlay.style.display='none';updateStats();last=performance.now();requestAnimationFrame(loop);
+}
+function collide(p,dx=0,dy=0,m=p.m){
+ for(let y=0;y<m.length;y++)for(let x=0;x<m[y].length;x++)if(m[y][x]){
+  let nx=p.x+x+dx,ny=p.y+y+dy;
+  if(nx<0||nx>=W||ny>=H||(ny>=0&&board[ny][nx]))return true;
+ }return false;
+}
+function merge(){piece.m.forEach((r,y)=>r.forEach((v,x)=>{if(v&&piece.y+y>=0)board[piece.y+y][piece.x+x]=piece.c}))}
+function rotate(){
+ const m=piece.m, r=m[0].map((_,i)=>m.map(row=>row[i]).reverse());
+ if(!collide(piece,0,0,r))piece.m=r;
+ else if(!collide(piece,-1,0,r)){piece.x--;piece.m=r}
+ else if(!collide(piece,1,0,r)){piece.x++;piece.m=r}
+}
+function move(dx){if(!paused&&!over&&!collide(piece,dx,0))piece.x+=dx}
+function soft(){if(!paused&&!over){if(!collide(piece,0,1)){piece.y++;score++}else lock()}}
+function hard(){if(paused||over)return;let d=0;while(!collide(piece,0,1)){piece.y++;d++}score+=d*2;lock()}
+function lock(){
+ merge();let cleared=0;
+ for(let y=H-1;y>=0;y--)if(board[y].every(Boolean)){board.splice(y,1);board.unshift(Array(W).fill(0));cleared++;y++}
+ if(cleared){lines+=cleared;score+=[0,100,300,500,800][cleared]*level;level=1+Math.floor(lines/10)}
+ piece=next;next=randPiece();
+ if(collide(piece))gameOver();
+ updateStats();
+}
+function gameOver(){over=true;showOverlay('Game Over','Score: '+score,'Restart')}
+function updateStats(){scoreEl.textContent=score;linesEl.textContent=lines;levelEl.textContent=level}
+function drawCell(x,y,c,a=1){ctx.globalAlpha=a;ctx.fillStyle=colors[c];ctx.fillRect(x*S+2,y*S+2,S-4,S-4);ctx.fillStyle='#fff3';ctx.fillRect(x*S+3,y*S+3,S-6,4);ctx.globalAlpha=1}
+function draw(){
+ ctx.clearRect(0,0,canvas.width,canvas.height);
+ for(let y=0;y<H;y++)for(let x=0;x<W;x++){ctx.strokeStyle='#ffffff08';ctx.strokeRect(x*S,y*S,S,S);if(board[y][x])drawCell(x,y,board[y][x])}
+ if(piece&&!over){
+  let ghost=0;while(!collide(piece,0,ghost+1))ghost++;
+  piece.m.forEach((r,y)=>r.forEach((v,x)=>{if(v){drawCell(piece.x+x,piece.y+y,piece.c,.95);drawCell(piece.x+x,piece.y+y+ghost,piece.c,.15)}}));
+ }
+}
+function loop(t){
+ if(over)return;let dt=t-last;last=t;if(!paused){dropTimer+=dt;let speed=Math.max(80,700-(level-1)*55);if(dropTimer>=speed){dropTimer=0;soft()}}draw();requestAnimationFrame(loop)
+}
+function showOverlay(title,text,btn){overTitle.textContent=title;overText.textContent=text;mainBtn.textContent=btn;overlay.style.display='flex'}
+function togglePause(){if(over)return;paused=!paused;if(paused)showOverlay('Paused','Tap continue to resume.','Continue');else overlay.style.display='none'}
+
+const scoreEl=document.getElementById('score'),linesEl=document.getElementById('lines'),levelEl=document.getElementById('level');
+const overlay=document.getElementById('overlay'),overTitle=document.getElementById('overTitle'),overText=document.getElementById('overText'),mainBtn=document.getElementById('mainBtn');
+
+document.querySelectorAll('[data-act]').forEach(b=>{
+ const act=b.dataset.act;
+ const run=()=>({left:()=>move(-1),right:()=>move(1),rotate,drop:soft,hard,pause:togglePause}[act]());
+ b.addEventListener('pointerdown',e=>{e.preventDefault();run()});
+});
+mainBtn.onclick=()=>{if(over)reset();else togglePause()};
+document.addEventListener('keydown',e=>{
+ if(['ArrowLeft','ArrowRight','ArrowDown','ArrowUp',' ','z','Z','x','X','p','P'].includes(e.key))e.preventDefault();
+ if(e.key==='ArrowLeft')move(-1);if(e.key==='ArrowRight')move(1);if(e.key==='ArrowDown')soft();
+ if(e.key==='ArrowUp'||e.key==='x'||e.key==='X')rotate();if(e.key===' ')hard();if(e.key==='p'||e.key==='P')togglePause();if((e.key==='z'||e.key==='Z')){rotate();rotate();rotate()}
+});
+reset();
+</script>
+</body>
+</html>
