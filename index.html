@@ -296,7 +296,7 @@ function updateStats(){
   levelEl.textContent=level;
 }
 
-function drawCell(ctxRef,x,y,color,alpha=1,size=S){
+function drawCell(ctxRef,x,y,color,alpha=1,size=20){
   ctxRef.globalAlpha=alpha;
   ctxRef.fillStyle=colors[color] || '#fff';
   ctxRef.fillRect(x*size+2,y*size+2,size-4,size-4);
@@ -311,7 +311,7 @@ function drawBoard(){
     for(let x=0;x<W;x++){
       ctx.strokeStyle='rgba(255,255,255,0.04)';
       ctx.strokeRect(x*S,y*S,S,S);
-      if(board[y][x]) drawCell(ctx,x,y,board[y][x]);
+      if(board[y][x]) drawCell(ctx,x,y,board[y][x],1,S);
     }
   }
   if(current && !over){
@@ -320,8 +320,8 @@ function drawBoard(){
     current.matrix.forEach((row,y)=>{
       row.forEach((value,x)=>{
         if(!value) return;
-        drawCell(ctx,current.x+x,ghostY+y,current.color,0.18);
-        drawCell(ctx,current.x+x,current.y+y,current.color,0.95);
+        drawCell(ctx,current.x+x,ghostY+y,current.color,0.18,S);
+        drawCell(ctx,current.x+x,current.y+y,current.color,0.95,S);
       });
     });
   }
@@ -340,9 +340,16 @@ function drawMini(canvasRef,ctxRef,piece){
   matrix.forEach((row,y)=>{
     row.forEach((value,x)=>{
       if(!value) return;
-      drawCell(ctxRef, (offsetX + x*blockSize)/S, (offsetY + y*blockSize)/S, piece.color, 1, blockSize);
+      const px=(offsetX+x*blockSize);
+      const py=(offsetY+y*blockSize);
+      ctxRef.globalAlpha=1;
+      ctxRef.fillStyle=colors[piece.color];
+      ctxRef.fillRect(px+2,py+2,blockSize-4,blockSize-4);
+      ctxRef.fillStyle='rgba(255,255,255,.25)';
+      ctxRef.fillRect(px+3,py+3,blockSize-6,3);
     });
   });
+  ctxRef.globalAlpha=1;
 }
 
 function renderPreview(){
